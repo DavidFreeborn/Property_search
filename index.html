@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Rightmove Properties Map</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chroma-js/2.1.2/chroma.min.js"></script>
+    <style>
+        #map { height: 600px; width: 100%; }
+        #error { color: red; font-weight: bold; }
+        #info { margin-top: 10px; }
+        #legend {
+            background: white;
+            padding: 5px;
+            margin: 5px;
+            border: 1px solid #000;
+            font-size: 12px;
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 2px;
+        }
+        .color-box {
+            width: 15px;
+            height: 15px;
+            margin-right: 3px;
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    <div id="legend"></div>
+    <div id="error"></div>
+    <div id="info"></div>
+    <script>
+    function displayError(message) {
+        document.getElementById('error').innerHTML += message + '<br>';
+        console.error(message);
+    }
+
+    function displayInfo(message) {
+        document.getElementById('info').innerHTML += message + '<br>';
+        console.log(message);
+    }
+
+    function initMap() {
+        try {
+            const map = new google.maps.Map(document.getElementById('map'), {
+                zoom: 12,
+                center: {lat: 51.509865, lng: -0.118092} // London center
+            });
+
+            fetch('rightmove_properties_streamlined.csv')
+                .then(response => response.text())
+                .then(csvText => {
+                    const trimmedCsv = csvText.trim().replace(/\n+$/, '');
+                    
+                    Papa.parse(trimmedCsv, {
+                        header: true,
+                        complete: function(results) {
+                            if (results.errors.length > 0) {
+                                displayError('Errors parsing CSV: ' + JSON.stringify(results.errors));
+                            }
+                            const properties = results.data.filter(prop => prop && Object.keys(prop).length > 0);
+                            if (properties.length === 0) {
+                                displayError('No valid properties found in CSV file');
+                                return;
+                            }
+                            displayInfo(`Total properties: ${properties.length}`);
+
+                            const prices = properties
+                                .map(p => parseFloat(p.price))
+                                .filter(p => !isNaN(p) && p > 0);
+                            const minPrice = Math.min(...prices);
+                            const maxPrice = Math.max(...prices);
+                            const colorScale = chroma.scale(['green', 'yellow', 'red']).domain([minPrice, maxPrice]);
+
+                            // Create legend
+                            createLegend(minPrice, maxPrice, colorScale);
+
+                            let validPropertiesCount = 0;
+                            properties.forEach((property, index) => {
+                                if (!property || typeof property !== 'object') {
+                                    console.log(`Invalid property at index ${index}:`, property);
+                                    return;
+                                }
+
+                                let price = parseFloat(property.price);
+                                if (isNaN(price) || price === 0) {
+                                    console.log(`Property with invalid price at index ${index}:`, property);
+                                    price = minPrice; // Assign minimum price as default
+                                }
+
+                                const color = colorScale(price).hex();
+                                if (!property.location) {
+                                    console.log(`Missing location for property at index ${index}:`, property);
+                                    return;
+                                }
+                                const locationMatch = property.location.match(/query=([-\d.]+),([-\d.]+)/);
+                                if (locationMatch) {
+                                    const lat = parseFloat(locationMatch[1]);
+                                    const lng = parseFloat(locationMatch[2]);
+                                    new google.maps.Marker({
+                                        position: {lat, lng},
+                                        map: map,
+                                        icon: {
+                                            path: google.maps.SymbolPath.CIRCLE,
+                                            fillColor: color,
+                                            fillOpacity: 0.7,
+                                            strokeWeight: 0,
+                                            scale: 10
+                                        },
+                                        title: `£${price.toLocaleString()} - ${property.address}`
+                                    });
+                                    validPropertiesCount++;
+                                } else {
+                                    console.log(`Invalid location for property at index ${index}:`, property);
+                                }
+                            });
+                            console.log(`Plotted ${validPropertiesCount} properties on the map`);
+                        },
+                        error: function(error) {
+                            displayError('Error loading CSV: ' + error);
+                        }
+                    });
+                })
+                .catch(error => displayError('Error fetching CSV: ' + error));
+        } catch (error) {
+            displayError('Error initializing map: ' + error);
+        }
+    }
+
+    function createLegend(minPrice, maxPrice, colorScale) {
+        const legend = document.getElementById('legend');
+        const steps = 5;
+        const priceStep = (maxPrice - minPrice) / (steps - 1);
+        
+        for (let i = 0; i < steps; i++) {
+            const price = minPrice + (priceStep * i);
+            const color = colorScale(price).hex();
+            
+            const item = document.createElement('div');
+            item.className = 'legend-item';
+            
+            const colorBox = document.createElement('div');
+            colorBox.className = 'color-box';
+            colorBox.style.backgroundColor = color;
+            
+            const label = document.createElement('span');
+            label.textContent = `£${Math.round(price).toLocaleString()}`;
+            
+            item.appendChild(colorBox);
+            item.appendChild(label);
+            legend.appendChild(item);
+        }
+    }
+
+    function loadGoogleMapsScript() {
+        var script = document.createElement('script');
+        script.src = 'https://maps.googleapis.com/maps/api/js?key=AIzaSyCrNiLpySHdC3IXZEPwMoTsLOMA2wNy5Mc&callback=initMap';
+        script.async = true;
+        script.defer = true;
+        document.head.appendChild(script);
+    }
+    window.onload = loadGoogleMapsScript;
+    </script>
+</body>
+</html>
