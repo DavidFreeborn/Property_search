@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Grouped Estate Agents Property Map</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
+    <style>
+        body, html {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+        }
+        #map { 
+            height: 90vh;
+            width: 100%;
+        }
+        #error { 
+            color: red;
+            font-weight: bold;
+        }
+        #info { 
+            margin-top: 10px;
+        }
+        #legend {
+            background: rgba(255, 255, 255, 0.8);
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 12px;
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            max-width: 200px;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 5px;
+        }
+        .color-box {
+            width: 20px;
+            height: 20px;
+            margin-right: 5px;
+            border: 1px solid #000;
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    <div id="legend"></div>
+    <div id="error"></div>
+    <div id="info"></div>
+    <script>
+    function displayError(message) {
+        document.getElementById('error').innerHTML += message + '<br>';
+        console.error(message);
+    }
+
+    function displayInfo(message) {
+        document.getElementById('info').innerHTML += message + '<br>';
+        console.log(message);
+    }
+
+    function initMap() {
+        try {
+            const map = new google.maps.Map(document.getElementById('map'), {
+                zoom: 12,
+                center: {lat: 51.509865, lng: -0.118092} // London center
+            });
+
+            fetch('rightmove_properties_grouped_agents.csv')
+                .then(response => response.text())
+                .then(csvText => {
+                    const trimmedCsv = csvText.trim();
+                    
+                    Papa.parse(trimmedCsv, {
+                        header: true,
+                        complete: function(results) {
+                            if (results.errors.length > 0) {
+                                displayError('Errors parsing CSV: ' + JSON.stringify(results.errors));
+                            }
+                            const properties = results.data.filter(prop => prop && Object.keys(prop).length > 1);
+                            if (properties.length === 0) {
+                                displayError('No valid properties found in CSV file');
+                                return;
+                            }
+                            displayInfo(`Total properties: ${properties.length}`);
+
+                            // Count properties per grouped agent
+                            const agentCounts = properties.reduce((acc, prop) => {
+                                const agent = prop.groupedAgent || 'Unknown';
+                                acc[agent] = (acc[agent] || 0) + 1;
+                                return acc;
+                            }, {});
+
+                            // Group agents with 1 or 2 properties into "Misc"
+                            const groupedAgentCounts = Object.entries(agentCounts).reduce((acc, [agent, count]) => {
+                                if (count <= 2) {
+                                    acc['Misc'] = (acc['Misc'] || 0) + count;
+                                } else {
+                                    acc[agent] = count;
+                                }
+                                return acc;
+                            }, {});
+
+                            // Sort agents by property count
+                            const sortedAgents = Object.entries(groupedAgentCounts)
+                                .sort((a, b) => b[1] - a[1])
+                                .map(([agent]) => agent);
+
+                            // Distinct color palette
+                            const colors = [
+                                '#FF0000', // Red
+                                '#00FF00', // Lime
+                                '#0000FF', // Blue
+                                '#FFFF00', // Yellow
+                                '#FF00FF', // Magenta
+                                '#00FFFF', // Cyan
+                                '#FFA500', // Orange
+                                '#800080', // Purple
+                                '#008000', // Green
+                                '#FFC0CB', // Pink
+                                '#A52A2A', // Brown
+                                '#FFD700', // Gold
+                                '#808000', // Olive
+                                '#008080', // Teal
+                                '#FF4500', // OrangeRed
+                                '#4B0082', // Indigo
+                                '#32CD32', // LimeGreen
+                                '#FF1493', // DeepPink
+                                '#1E90FF', // DodgerBlue
+                                '#8B4513'  // SaddleBrown
+                            ];
+
+                            const agentColors = {};
+                            sortedAgents.forEach((agent, index) => {
+                                if (agent === 'Misc') {
+                                    agentColors[agent] = '#4A4A4A'; // Dark grey for Misc
+                                } else {
+                                    agentColors[agent] = colors[index % colors.length];
+                                }
+                            });
+
+                            // Create legend
+                            createLegend(agentColors, groupedAgentCounts);
+
+                            let validPropertiesCount = 0;
+                            properties.forEach((property, index) => {
+                                if (!property || typeof property !== 'object') {
+                                    console.log(`Invalid property at index ${index}:`, property);
+                                    return;
+                                }
+
+                                let agent = property.groupedAgent || 'Unknown';
+                                if (agentCounts[agent] <= 2) {
+                                    agent = 'Misc';
+                                }
+                                const color = agentColors[agent] || '#808080'; // Grey for unknown
+
+                                if (!property.location) {
+                                    console.log(`Missing location for property at index ${index}:`, property);
+                                    return;
+                                }
+                                const locationMatch = property.location.match(/query=([-\d.]+),([-\d.]+)/);
+                                if (locationMatch) {
+                                    const lat = parseFloat(locationMatch[1]);
+                                    const lng = parseFloat(locationMatch[2]);
+                                    new google.maps.Marker({
+                                        position: {lat, lng},
+                                        map: map,
+                                        icon: {
+                                            path: google.maps.SymbolPath.CIRCLE,
+                                            fillColor: color,
+                                            fillOpacity: 0.7,
+                                            strokeWeight: 0,
+                                            scale: 10
+                                        },
+                                        title: `${agent} - £${parseFloat(property.price).toLocaleString()} - ${property.address}`
+                                    });
+                                    validPropertiesCount++;
+                                } else {
+                                    console.log(`Invalid location for property at index ${index}:`, property);
+                                }
+                            });
+                            console.log(`Plotted ${validPropertiesCount} properties on the map`);
+                        },
+                        error: function(error) {
+                            displayError('Error parsing CSV: ' + error);
+                        }
+                    });
+                })
+                .catch(error => displayError('Error fetching CSV: ' + error));
+        } catch (error) {
+            displayError('Error initializing map: ' + error);
+        }
+    }
+
+    function createLegend(agentColors, agentCounts) {
+        const legend = document.getElementById('legend');
+        Object.entries(agentColors).forEach(([agent, color]) => {
+            const item = document.createElement('div');
+            item.className = 'legend-item';
+            
+            const colorBox = document.createElement('div');
+            colorBox.className = 'color-box';
+            colorBox.style.backgroundColor = color;
+            
+            const label = document.createElement('span');
+            label.textContent = `${agent} (${agentCounts[agent]})`;
+            
+            item.appendChild(colorBox);
+            item.appendChild(label);
+            legend.appendChild(item);
+        });
+    }
+
+    function loadGoogleMapsScript() {
+        var script = document.createElement('script');
+        script.src = 'https://maps.googleapis.com/maps/api/js?key=AIzaSyCrNiLpySHdC3IXZEPwMoTsLOMA2wNy5Mc&callback=initMap';
+        script.async = true;
+        script.defer = true;
+        document.head.appendChild(script);
+    }
+
+    // Load Google Maps API asynchronously
+    window.addEventListener('load', loadGoogleMapsScript);
+    </script>
+</body>
+</html>

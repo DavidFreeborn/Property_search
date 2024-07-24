@@ -12,5 +12,6 @@ print(f"Serving at http://localhost:{PORT}")
 print("To view the map, open a web browser and go to:")
 print(f"http://localhost:{PORT}/property_map.html")
 print(f"http://localhost:{PORT}/estate_agents_map.html")
+print(f"http://localhost:{PORT}/grouped_estate_agents_map.html")
 with socketserver.TCPServer(("", PORT), Handler) as httpd:
     httpd.serve_forever()
