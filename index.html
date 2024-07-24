@@ -5,28 +5,41 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/chroma-js/2.1.2/chroma.min.js"></script>
     <style>
-        #map { height: 600px; width: 100%; }
-        #error { color: red; font-weight: bold; }
-        #info { margin-top: 10px; }
+        body, html {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+        }
+        #map { 
+            height: 90vh;
+            width: 100%;
+        }
+        #error { 
+            color: red;
+            font-weight: bold;
+        }
+        #info { 
+            margin-top: 10px;
+        }
         #legend {
-            background: white;
-            padding: 5px;
-            margin: 5px;
-            border: 1px solid #000;
-            font-size: 12px;
+            background: rgba(255, 255, 255, 0.8);
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 14px;
             position: absolute;
-            bottom: 20px;
-            right: 20px;
+            bottom: 30px;
+            right: 10px;
+            max-width: 150px;
         }
         .legend-item {
             display: flex;
             align-items: center;
-            margin-bottom: 2px;
+            margin-bottom: 5px;
         }
         .color-box {
-            width: 15px;
-            height: 15px;
-            margin-right: 3px;
+            width: 20px;
+            height: 20px;
+            margin-right: 5px;
         }
     </style>
 </head>
